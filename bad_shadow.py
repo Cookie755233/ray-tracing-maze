@@ -3,8 +3,6 @@ import pygame
 import random
 import math
 
-from pygame import fastevent
-
 pygame.init()
 
 BLACK = (0, 0, 0)
