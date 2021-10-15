@@ -9,6 +9,9 @@ import enum
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
 RED = (255, 0, 0)
+YELLOW = (255, 255, 0)
+TILE_WIDTH = 40
+
 
 class Direction(enum.Enum):
     DIV_X = 1
@@ -54,7 +57,7 @@ class Path:
             force_decision = random.randint(1, 2) # if the x any y distances are equal, randomly pick a direction
 
         if force_decision == 1 or distance_x > distance_y:
-            bend_point = x1 + (random.randint(0, distance_x) * x_incr)
+            bend_point = x1 + (random.randint(0, int(distance_x)) * x_incr)
 
             while True:
                 if x == bend_point:
@@ -72,7 +75,7 @@ class Path:
                     break
 
         elif force_decision == 2 or distance_x < distance_y:
-            bend_point = y1 + (random.randint(0, distance_y) * y_incr)
+            bend_point = y1 + (random.randint(0, int(distance_y)) * y_incr)
 
             while True:
                 if y == bend_point:
@@ -134,7 +137,7 @@ class Partition:
 
         return self.children
 
-    def create_room(self, min_room_size:int=1, min_cells_from_side:int=1):
+    def create_room(self, min_room_size:int=3, min_cells_from_side:int=1):
         """Generates a room that fits within the Partition"""
         max_room_width = self.width - (2 * min_cells_from_side)
         max_room_height = self.height - (2 * min_cells_from_side)
@@ -154,61 +157,46 @@ class Partition:
 
     def create_key_point(self) -> tuple:
         """Generates a point that can be used to create a path between self and sibling"""
-        key_point_x = (self.room.x*2 + self.room.width) /2
-        key_point_y = (self.room.y*2 + self.room.height) /2
+        if self.room:
+            key_point_x = (self.room.x*2 + self.room.width) /2
+            key_point_y = (self.room.y*2 + self.room.height) /2
+        
+            self.key_point = key_point_x, key_point_y
+            return self.key_point
 
-        return (key_point_x, key_point_y)
-
-
-    def create_path_between_children(self) -> Path:
-        """Generates a pathway between the key points of this partition's children"""
-        child_0 = self.children[0]
-        child_1 = self.children[1]
-
-        if child_0 is not None and child_1 is not None:
-            if child_0.key_point is None:
-                child_0.create_key_point()
-
-            if child_1.key_point is None:
-                child_1.create_key_point()
-
-            self.path = Path()
-            x1, y1 = child_0.key_point
-            x2, y2 = child_1.key_point
-
-            self.path.connect_points(x1, y1, x2, y2)
-
-            return self.path
-
+        else: 
+            key_point_x = self.x + random.randint(0, self.width - 1)
+            key_point_y = self.y + random.randint(0, self.height - 1)
+            
+            self.key_point = key_point_x, key_point_y
+            return self.key_point
 
 
 
 def create_partitions(x: int, y: int, width: int, height: int, divisions: int, memo=set()):
     """Generates an initial MapPartition and recursively creates children to the depth specified"""
     partition = Partition(x, y, width, height)
-    if divisions > 1:
+    if divisions > 0:
         if (aspect_ratio := partition.width/partition.height) == 1:
             divide_direction = Direction(random.randint(1, 2))
         else:
             divide_direction = Direction(1) if aspect_ratio > 1 else Direction(2)
 
-
         child_1, child_2 = partition.create_children(divide_direction)
+
         if child_1 and child_2:
-            # partition.create_path_between_children()
             create_partitions(child_1.x, child_1.y, child_1.width, child_1.height, divisions-1, memo)
             create_partitions(child_2.x, child_2.y, child_2.width, child_2.height, divisions-1, memo)
 
     else:
-        room = partition.create_room()
-        if room:
-            center_x, center_y = partition.create_key_point()
-            pygame.draw.circle(display, RED, (center_x*40, center_y*40), 5)
-            memo.add(room.__repr__()) 
+        memo.add(partition.__repr__())
+        partition.create_key_point
+        
+        if room:= partition.create_room():
+            memo.add(room.__repr__())
+
     return memo
 
-
-TILE_WIDTH = 40
 
 pygame.init()
 
@@ -216,7 +204,7 @@ run = True
 display = pygame.display.set_mode((1280,720))
 clock = pygame.time.Clock()
 
-cells = create_partitions(0, 0, 32, 18, 4)
+cells = create_partitions(0, 0, 32, 18, 2)
 
 while run:
     # display.fill(BLACK)
