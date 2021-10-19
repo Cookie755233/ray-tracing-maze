@@ -1,11 +1,9 @@
 
-from typing import List
 import pygame
 import numpy as np
 import random
 import math
-
-from pygame.version import ver
+import time
 
 
 WHITE = (255, 255, 255)
@@ -14,12 +12,15 @@ GREY = (50, 50, 50)
 RED = (255, 0, 0)
 PURPLE = (255, 0, 255)
 BLUE = (65, 105, 225)
+YELLOW = (255, 255, 0)
 
-TILE_WIDTH = 70
-ROW = 15
-COL = 10
+TILE_WIDTH = 50
+ROW = 20
+COL = 15
+
 LIGHT_RADIUS = 100
-ALPHA_LEVEL = 2.5
+LIGHT_ALPHA = 2.5
+SHADOW_ALPHA = 30
 
 
 class Tile:
@@ -31,7 +32,7 @@ class Tile:
         for x, row in enumerate(self.tile_list):
             for y, col in enumerate(row):
                 if col == 1:
-                    rect = pygame.Rect(y*TILE_WIDTH, x*TILE_WIDTH, TILE_WIDTH-5, TILE_WIDTH-5)
+                    rect = pygame.Rect(y*TILE_WIDTH, x*TILE_WIDTH, TILE_WIDTH, TILE_WIDTH)
                     rect.center = (y*TILE_WIDTH + 1/2*TILE_WIDTH,
                                    x*TILE_WIDTH + 1/2*TILE_WIDTH)
                     pygame.draw.rect(display, WHITE, rect)
@@ -111,9 +112,9 @@ class Tile:
                 walls.append(['BOTTOM', (col, row+1),  (col+1, row+1)])
 
         walls = [('EDGE', (0, 0), (ROW, 0)),
-                   ('EDGE', (ROW, 0), (ROW, COL)),
-                   ('EDGE', (ROW, COL), (0, COL)),
-                   ('EDGE', (0, COL), (0, 0))]
+                 ('EDGE', (ROW, 0), (ROW, COL)),
+                 ('EDGE', (ROW, COL), (0, COL)),
+                 ('EDGE', (0, COL), (0, 0))]
         for x, row in enumerate(self.tile_list):
             for y, col in enumerate(row):
                 if col == 1:
@@ -121,31 +122,67 @@ class Tile:
 
         return walls
 
-    def get_vertexs(self, mx, my, edges):
+    def get_vertexs(self, edges):
         ''' return vertexs & sort in clockwise order'''
         if len(edges) > 0:
             vertexs = list(set([edge[1] for edge in edges] + [edge[2] for edge in edges]))
 
-        return sorted(vertexs, key=lambda v: math.atan2(v[1]-my//TILE_WIDTH, v[0]-mx//TILE_WIDTH))
+        return vertexs
 
-    def offset_vertexs(self, mx, my, vertexs, degrees=0.0001):
+    def offset_vertexs(self, x, y, walls, vertexs, offset=0.0001, dummy_length=10000):
+        ''' return offseted vertexs in grid system '''
+        offsets = [(0, 0), (ROW, 0), (ROW, COL), (0, COL)]
         for vx, vy in vertexs:
-            angle = math.degrees(math.atan2(vx-mx, vy-my))
-            c_clockwise = angle - degrees
-            clockwise = angle + degrees
+            distance = (x/TILE_WIDTH-vx)**2 + (y/TILE_WIDTH-vy)**2
 
+            rad = math.atan2(vx*TILE_WIDTH-x, vy*TILE_WIDTH-y)
+            c_clockwise, clockwise = rad-offset, rad+offset
+
+            dummy_1 = (x + dummy_length*math.sin(c_clockwise),
+                       y + dummy_length*math.cos(c_clockwise))
+            dummy_2 = (x + dummy_length*math.sin(clockwise),
+                       y + dummy_length*math.cos(clockwise))
+
+            for dx, dy in [dummy_1, dummy_2]:
+                for wall in walls:
+                    x1, y1, x2, y2 = wall[1][0], wall[1][1], wall[2][0], wall[2][1]
+                    x3, y3, x4, y4 = x/TILE_WIDTH, y/TILE_WIDTH, dx/TILE_WIDTH, dy/TILE_WIDTH
+
+                    s1_x, s1_y = x2-x1, y2-y1
+                    s2_x, s2_y = x4-x3, y4-y3
+
+                    if (-s2_x*s1_y + s1_x*s2_y):
+                        s = (-s1_y*(x1-x3) + s1_x*(y1-y3)) / (-s2_x*s1_y + s1_x*s2_y)
+                        t = ( s2_x*(y1-y3) - s2_y*(x1-x3)) / (-s2_x*s1_y + s1_x*s2_y)
+
+                        if 0 <= s <= 1 and 0 <= t <=1:
+                            i_x = x1 + (t * s1_x)
+                            i_y = y1 + (t * s1_y)
+                            if all([i_x >= 0, i_y >= 0]):
+                                d_offset = (x3-i_x)**2 + (y3-i_y)**2
+
+                                if d_offset > distance:
+                                    offsets.append((i_x, i_y))
+                                # if edge, both d_offsets < distance, so make an exception
+                                elif (x1, y1) in [(0, 0), (ROW, 0), (ROW, COL), (0, COL)]:
+                                    offsets.append((i_x, i_y))
         
+        return offsets
 
 
-class Shadow:
+class Ray:
     def __init__(self, x, y):
         self.x = x
         self.y = y
 
-    def check_collision(self, walls, vertexs) -> list:
-        ''' return lists nearest collision points '''
+    def check_collision(self, walls, offsets) -> list:
+        ''' return lists nearest collision points in grid system'''
+
+        def remove_duplicate(self, x, y):
+            pass
+
         collide_points = []
-        for vx, vy in vertexs:
+        for vx, vy in offsets:
             temp =[]
             for wall in walls:
                 x1, y1, x2, y2 = wall[1][0], wall[1][1], wall[2][0], wall[2][1]
@@ -168,9 +205,42 @@ class Shadow:
             if temp:
                 collide_points.append(temp[-1])
 
-        return list(set(collide_points))
+        collide_points = list(set(collide_points))
+        collide_points = map(remove_duplicate(), collide_points)
+
+        return sorted(collide_points, key=lambda x: math.atan2(x[1]-self.y/TILE_WIDTH, x[0]-self.x/TILE_WIDTH))
+
+    def draw(self, offsets_points):
+        ''' connect all valid points(offseted vertexs) '''
+        grid_to_coord = [(np.array(o)*TILE_WIDTH).tolist() for o in offsets_points]
+        grid_to_coord = grid_to_coord + [grid_to_coord[0]]
+
+        if len(offsets_points) > 12:
+            tartget_rect = pygame.Rect(0, 0, ROW*TILE_WIDTH+1, COL*TILE_WIDTH+1)
+            surface = pygame.Surface(tartget_rect.size, pygame.SRCALPHA)
+            pygame.draw.polygon(surface, (*WHITE, SHADOW_ALPHA), grid_to_coord)
+            display.blit(surface, tartget_rect)
 
 
+class Mouse:
+    def __init__(self, x, y):
+        self.x = x 
+        self.y = y
+        self.pos = (self.x, self.y)
+        
+    def create_neighbors(self, radius=20, num=10):
+        ''' return neighbors + self.pos in a list'''
+        neighbors = [self.pos]
+
+        if num == 0: return neighbors
+
+        for i in range(0, 360, int(360/num)):
+            x = self.x + radius*math.cos(math.radians(i))
+            y = self.y + radius*math.sin(math.radians(i))
+            neighbors.append((x, y))
+        
+        return neighbors
+    
 
 def draw_circle_alpha(surface, color, center, radius):
     target_rect = pygame.Rect(center, (0, 0)).inflate((radius * 2, radius * 2))
@@ -182,51 +252,52 @@ def draw_circle_alpha(surface, color, center, radius):
 pygame.init()
 pygame.font.init()
 coord = pygame.font.SysFont('Arial', 15)
-display = pygame.display.set_mode((ROW*TILE_WIDTH, COL*TILE_WIDTH))
-# display = pygame.display.set_mode((1300,700))
+display = pygame.display.set_mode((ROW*TILE_WIDTH+3, COL*TILE_WIDTH+3)) # +1 to properly show outline
 
 clock = pygame.time.Clock()
-# 100 = 0.1sec -> counter -= x every 0.1 second.
-pygame.time.set_timer(pygame.USEREVENT, 100)
+pygame.time.set_timer(pygame.USEREVENT, 100) # 100 = 0.1sec -> counter -= x every 0.1 second.
+
 counter = 100
 text = pygame.font.SysFont('Arial', 100, bold=True)
 
-world_map = Tile()
+tile = Tile()
 
-while True:
-    mx, my = pygame.mouse.get_pos()
-    coordinates = coord.render(
-        f'({mx//TILE_WIDTH},{my//TILE_WIDTH})', False, RED)
-
+while True: 
     display.fill(BLACK)
 
-    world_map.draw()
-    walls = world_map.get_walls()
-    vertexs = world_map.get_vertexs(mx, my, walls)
+    ''' Mouse '''
+    mx, my = pygame.mouse.get_pos()
+    mouse = Mouse(mx, my)
+    neighbors = mouse.create_neighbors(num=0)
+    
+    for n in neighbors:
+        pygame.draw.circle(display, RED, n, 3)
+        
+    # coordinates = coord.render(
+    #     f'({mx//TILE_WIDTH},{my//TILE_WIDTH})', False, RED)
+    # display.blit(coordinates, (mx, my+30))
 
-    shadow = Shadow(mx, my)
-
+    ''' Light '''
     # for i in range(LIGHT_RADIUS):
-    #     draw_circle_alpha(
-    #         display, (255, 255, 255, ALPHA_LEVEL), (mx, my), i*1.5)
+    #     draw_circle_alpha(display, (*WHITE, LIGHT_ALPHA), (mx, my), i*1.5)
+
+
+    ''' Tile map '''
+    tile.draw()
+    walls = tile.get_walls()
+    vertexs = tile.get_vertexs(walls)
 
     for wall in walls:
         pygame.draw.line(display, BLUE,
                          (wall[1][0]*TILE_WIDTH, wall[1][1]*TILE_WIDTH),
-                         (wall[2][0]*TILE_WIDTH, wall[2][1]*TILE_WIDTH), 1)
-    # for x, y in vertexs:
-        # pygame.draw.circle(display, PURPLE, (x*TILE_WIDTH, y*TILE_WIDTH), 3)
-        # pygame.draw.line(display, BLUE, (mx, my),
-        #                  (x*TILE_WIDTH, y*TILE_WIDTH), 1)
+                         (wall[2][0]*TILE_WIDTH, wall[2][1]*TILE_WIDTH), 3)
+    
+    for nx, ny in neighbors:
+        offsets = tile.offset_vertexs(nx, ny, walls, vertexs) 
+        ray = Ray(nx, ny)
+        rays = ray.check_collision(walls, offsets)
+        ray.draw(rays)
 
-    shadows = shadow.check_collision(walls,vertexs)
-    for x, y in shadows:
-        pygame.draw.circle(display, RED, (x*TILE_WIDTH, y*TILE_WIDTH), 3)
-        pygame.draw.line(display, BLUE, (mx,my), (x*TILE_WIDTH, y*TILE_WIDTH),1)
-        
-
-    pygame.draw.circle(display, GREY, (mx, my), 3)
-    display.blit(coordinates, (mx, my+30))
 
     for event in pygame.event.get():
         if event.type == pygame.USEREVENT:
@@ -235,7 +306,7 @@ while True:
             pygame.quit()
             exit()
         if event.type == pygame.MOUSEBUTTONDOWN:
-            world_map.color(world_map.tile_list, mx, my)
+            tile.color(tile.tile_list, mx, my)
 
     # Time
     # if counter < 0:
