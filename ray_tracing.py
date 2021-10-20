@@ -16,7 +16,7 @@ YELLOW = (255, 255, 0)
 
 TILE_WIDTH = 50
 ROW = 20
-COL = 15
+COL = 10
 
 LIGHT_RADIUS = 100
 LIGHT_ALPHA = 2.5
@@ -122,16 +122,16 @@ class Tile:
 
         return walls
 
-    def get_vertexs(self, edges):
-        ''' return vertexs & sort in clockwise order'''
-        if len(edges) > 0:
-            vertexs = list(set([edge[1] for edge in edges] + [edge[2] for edge in edges]))
+    def get_vertexs(self, walls):
+        ''' return vertexs '''
+        if len(walls) > 0:
+            vertexs = list(set([edge[1] for edge in walls] + [edge[2] for edge in walls]))
 
         return vertexs
 
-    def offset_vertexs(self, x, y, walls, vertexs, offset=0.0001, dummy_length=10000):
+    def offset_vertexs(self, x, y, walls, vertexs, offset=0.001, dummy_length=10000):
         ''' return offseted vertexs in grid system '''
-        offsets = [(0, 0), (ROW, 0), (ROW, COL), (0, COL)]
+        offsets = [v for v in vertexs]
         for vx, vy in vertexs:
             distance = (x/TILE_WIDTH-vx)**2 + (y/TILE_WIDTH-vy)**2
 
@@ -160,13 +160,9 @@ class Tile:
                             i_y = y1 + (t * s1_y)
                             if all([i_x >= 0, i_y >= 0]):
                                 d_offset = (x3-i_x)**2 + (y3-i_y)**2
-
                                 if d_offset > distance:
                                     offsets.append((i_x, i_y))
-                                # if edge, both d_offsets < distance, so make an exception
-                                elif (x1, y1) in [(0, 0), (ROW, 0), (ROW, COL), (0, COL)]:
-                                    offsets.append((i_x, i_y))
-        
+
         return offsets
 
 
@@ -177,6 +173,21 @@ class Ray:
 
     def check_collision(self, walls, offsets) -> list:
         ''' return lists nearest collision points in grid system'''
+        
+        def remove_duplicates(points, output=[]):
+            '''
+            class Point(tuple):
+                def __hash__(self):
+                    return hash(tuple(round(x, 1) for x in self))
+                def __eq__(self, other):
+                    if type(other) is not type(self): return False
+                    return len(other) == len(self) and \
+                        all(round(x, 1) == round(y, 1) for x, y in zip(self, other))
+
+            def fuzzy_uniq(points):
+                return list(map(tuple, set(map(Point, points))))
+            '''
+            pass
 
         collide_points = []
         for vx, vy in offsets:
@@ -201,10 +212,18 @@ class Ray:
             temp.sort(key = lambda x: (x[0]-vx)**2 + (x[1]-vy)**2)
             if temp:
                 collide_points.append(temp[-1])
+                
+        print(f'before : {len(collide_points)}')
+        print(collide_points)
+        # remove similar/duplicate points to reduce the amount of ray
+        collide_points = list(map(remove_duplicates, collide_points))
+        print(collide_points)
 
-        # round up similar points to reduce the amount of ray // remove duplicates
-        collide_points = list(map(lambda x: (round(x[0], 3), round(x[1], 3)), collide_points))
         collide_points = list(set(collide_points))
+        
+        print(f'after : {len(collide_points)}')
+        print(collide_points)
+        print()
 
         return sorted(collide_points, key=lambda x: math.atan2(x[1]-self.y/TILE_WIDTH, x[0]-self.x/TILE_WIDTH))
 
@@ -212,9 +231,8 @@ class Ray:
         ''' connect all valid points, '''
         grid_to_coord = [(np.array(c)*TILE_WIDTH).tolist() for c in collide_points]
         grid_to_coord = grid_to_coord + [grid_to_coord[0]]
-        print(len(grid_to_coord))
         if fill:
-            if len(collide_points) > 12:
+            if len(collide_points) > 8 :
                 tartget_rect = pygame.Rect(0, 0, ROW*TILE_WIDTH+1, COL*TILE_WIDTH+1)
                 surface = pygame.Surface(tartget_rect.size, pygame.SRCALPHA)
                 pygame.draw.polygon(surface, (*WHITE, SHADOW_ALPHA), grid_to_coord)
@@ -230,7 +248,7 @@ class Mouse:
         self.pos = (self.x, self.y)
         
     def create_neighbors(self, radius=20, num=0):
-        ''' return neighbors + self.pos in a list, create a 'fuzzy' look '''
+        ''' return neighbors + self.pos in a list in coord system, create a 'fuzzy' look '''
         neighbors = [self.pos]
 
         if num == 0: return neighbors
@@ -265,6 +283,7 @@ tile = Tile()
 
 while True: 
     display.fill(BLACK)
+    tile.draw()
 
     ''' FPS stress test '''
     fps = str(int(clock.get_fps()))
@@ -286,27 +305,28 @@ while True:
     #     f'({mx//TILE_WIDTH},{my//TILE_WIDTH})', True, RED)
     # display.blit(coordinates, (mx, my+30))
 
-    ''' Light '''
-    # for i in range(LIGHT_RADIUS):
-    #     draw_circle_alpha(display, (*WHITE, LIGHT_ALPHA), (mx, my), i*1.5)
-
-
     ''' Tile map '''
-    tile.draw()
     walls = tile.get_walls()
     vertexs = tile.get_vertexs(walls)
 
-    # for wall in walls:
-    #     pygame.draw.line(display, BLUE,
-    #                      (wall[1][0]*TILE_WIDTH, wall[1][1]*TILE_WIDTH),
-    #                      (wall[2][0]*TILE_WIDTH, wall[2][1]*TILE_WIDTH), 3)
+    for wall in walls:
+        pygame.draw.line(display, WHITE,
+                         (wall[1][0]*TILE_WIDTH, wall[1][1]*TILE_WIDTH),
+                         (wall[2][0]*TILE_WIDTH, wall[2][1]*TILE_WIDTH))
     
     ''' Draw rays '''
     for nx, ny in neighbors:
         offsets = tile.offset_vertexs(nx, ny, walls, vertexs) 
         ray = Ray(nx, ny)
-        rays = ray.check_collision(walls, offsets)
-        ray.draw_lights(rays, fill=True)
+        points = ray.check_collision(walls, offsets)
+        ray.draw_lights(points, fill=True)
+        
+
+    ''' Light '''
+    # for i in range(LIGHT_RADIUS):
+    #     draw_circle_alpha(display, (*WHITE, LIGHT_ALPHA), (mx, my), i*1.5)
+
+
 
 
     for event in pygame.event.get():
