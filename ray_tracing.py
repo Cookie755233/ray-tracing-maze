@@ -5,6 +5,8 @@ import random
 import math
 import time
 
+from pygame.cursors import tri_left
+
 
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
@@ -166,28 +168,27 @@ class Tile:
         return offsets
 
 
+class Point(tuple):
+    def __hash__(self):
+        return hash(tuple(round(x, 1) for x in self))
+        
+    def __eq__(self, other):
+        if type(other) is not type(self): return False
+        return len(other) == len(self) and \
+            all(round(x, 1) == round(y, 1) for x, y in zip(self, other))
+
+
 class Ray:
     def __init__(self, x, y):
         self.x = x
         self.y = y
 
-    def check_collision(self, walls, offsets) -> list:
-        ''' return lists nearest collision points in grid system'''
-        
-        def remove_duplicates(points, output=[]):
-            '''
-            class Point(tuple):
-                def __hash__(self):
-                    return hash(tuple(round(x, 1) for x in self))
-                def __eq__(self, other):
-                    if type(other) is not type(self): return False
-                    return len(other) == len(self) and \
-                        all(round(x, 1) == round(y, 1) for x, y in zip(self, other))
 
-            def fuzzy_uniq(points):
-                return list(map(tuple, set(map(Point, points))))
-            '''
-            pass
+    def fuzzy_uniq(points):
+        return list(map(tuple, set(map(Point, points))))
+        
+    def check_collision(self, walls, offsets) -> list:
+        ''' pass in offseted vertexs and return lists of nearest collision points in grid system'''
 
         collide_points = []
         for vx, vy in offsets:
@@ -212,20 +213,13 @@ class Ray:
             temp.sort(key = lambda x: (x[0]-vx)**2 + (x[1]-vy)**2)
             if temp:
                 collide_points.append(temp[-1])
-                
-        print(f'before : {len(collide_points)}')
-        print(collide_points)
+
         # remove similar/duplicate points to reduce the amount of ray
-        collide_points = list(map(remove_duplicates, collide_points))
-        print(collide_points)
-
         collide_points = list(set(collide_points))
-        
-        print(f'after : {len(collide_points)}')
-        print(collide_points)
-        print()
+        points = Point(collide_points)
+        fuz_sort_points = list(map(tuple, set(map(Point, points))))
 
-        return sorted(collide_points, key=lambda x: math.atan2(x[1]-self.y/TILE_WIDTH, x[0]-self.x/TILE_WIDTH))
+        return sorted(fuz_sort_points, key=lambda x: math.atan2(x[1]-self.y/TILE_WIDTH, x[0]-self.x/TILE_WIDTH))
 
     def draw_lights(self, collide_points, fill=False):
         ''' connect all valid points, '''
@@ -299,11 +293,6 @@ while True:
     
     for n in neighbors:
         pygame.draw.circle(display, RED, n, 1)
-    
-    # coord = pygame.font.SysFont('Arial', 15)
-    # coordinates = coord.render(
-    #     f'({mx//TILE_WIDTH},{my//TILE_WIDTH})', True, RED)
-    # display.blit(coordinates, (mx, my+30))
 
     ''' Tile map '''
     walls = tile.get_walls()
@@ -327,8 +316,6 @@ while True:
     #     draw_circle_alpha(display, (*WHITE, LIGHT_ALPHA), (mx, my), i*1.5)
 
 
-
-
     for event in pygame.event.get():
         if event.type == pygame.USEREVENT:
             counter -= 1
@@ -341,6 +328,6 @@ while True:
     # Time
     # if counter < 0:
     #     display.blit(text.render('YOU LOSE', True, RED), (100,100))
-    clock.tick(60)
+    clock.tick(100)
 
     pygame.display.update()
