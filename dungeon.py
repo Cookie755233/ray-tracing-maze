@@ -1,12 +1,8 @@
 
-from tkinter import Widget
-from warnings import simplefilter
 import pygame
 import random
 import math
 import enum
-
-from pygame import key
 
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
@@ -37,12 +33,15 @@ class Room:
         return f'{self.x}, {self.y}'
         
     def __repr__(self):
-        return (self.x, self.y, self.width, self.height)
+        return self.x, self.y, self.width, self.height
+
+    def create_rect(self):
+        return self.x*TILE_WIDTH, self.y*TILE_WIDTH, self.width*TILE_WIDTH, self.height*TILE_WIDTH
 
     def create_key_point(self) -> tuple:
         """Generates a point that can be used to create a path between self and sibling"""
         x, y = self.x + self.width/2, self.y + self.height/2
-        return x, y
+        return x*TILE_WIDTH, y*TILE_WIDTH
 
 class Path:
     def __init__(self):
@@ -113,7 +112,6 @@ class Partition:
         self.width = width
         self.height = height
         self.children = (None, None)
-        self.room = None
         self.path = None
         self.parent = None
 
@@ -150,8 +148,8 @@ class Partition:
 
         return self.children # (Partition, Partition)
 
-    def create_room(self, min_room_size:int=2, min_cells_from_side:int=1):
-        """Generates a room that fits within the Partition"""
+    def create_room_object(self, min_room_size:int=2, min_cells_from_side:int=1):
+        """Generates a room that fits within the Partition -> Room object or None"""
         max_room_width = self.width - (2 * min_cells_from_side)
         max_room_height = self.height - (2 * min_cells_from_side)
 
@@ -164,30 +162,10 @@ class Partition:
         room_x = self.x + random.randint(min_cells_from_side, self.width - room_width - 1)
         room_y = self.y + random.randint(min_cells_from_side, self.height - room_height - 1)
 
-        self.room = Room(room_x, room_y, room_width, room_height)
-
-        return self.room #Room
-
-    # def create_key_point(self) -> tuple:
-    #     """Generates a point that can be used to create a path between self and sibling"""
-    #     if self.room:
-    #         key_point_x = (self.room.x*2 + self.room.width) /2
-    #         key_point_y = (self.room.y*2 + self.room.height) /2
-        
-    #         self.key_point = key_point_x, key_point_y
-    #         return self.key_point
-
-    #     else: 
-    #         key_point_x = self.x + random.randint(0, self.width - 1)
-    #         key_point_y = self.y + random.randint(0, self.height - 1)
-            
-    #         self.key_point = key_point_x, key_point_y
-    #         return self.key_point #(x, y)
+        return Room(room_x, room_y, room_width, room_height) 
 
 
-
-def create_partitions(x: int, y: int, width: int, height: int, divisions: int):
-    """Generates an initial MapPartition and recursively creates children to the depth specified"""
+def draw_room(x: int, y: int, width: int, height: int, divisions: int):
     parent = Partition(x, y, width, height)
 
     if divisions > 0:
@@ -200,29 +178,25 @@ def create_partitions(x: int, y: int, width: int, height: int, divisions: int):
         child_1, child_2 = parent.create_children(divide_direction)
 
         if child_1 and child_2:
-            pygame.draw.rect(display, WHITE, (child_1.x*TILE_WIDTH, child_1.y*TILE_WIDTH, child_1.width*TILE_WIDTH, child_1.height*TILE_WIDTH),1)
-            pygame.draw.rect(display, WHITE, (child_2.x*TILE_WIDTH, child_2.y*TILE_WIDTH, child_2.width*TILE_WIDTH, child_2.height*TILE_WIDTH),1)
+            # draw partitions 
+            # pygame.draw.rect(display, WHITE, (child_1.x*TILE_WIDTH, child_1.y*TILE_WIDTH, child_1.width*TILE_WIDTH, child_1.height*TILE_WIDTH),1)
+            # pygame.draw.rect(display, WHITE, (child_2.x*TILE_WIDTH, child_2.y*TILE_WIDTH, child_2.width*TILE_WIDTH, child_2.height*TILE_WIDTH),1)
 
-            room_1 = child_1.create_room()
-            room_2 = child_2.create_room()
-            # print(f'room1: ({room_1}) | room2: ({room_2})')
+            # create room if room width/height > 2 else return None
+            room_1 = child_1.create_room_object()
+            room_2 = child_2.create_room_object()
 
             if room_1 and (divisions-1 == 0):
-                x, y = room_1.create_key_point()
-                pygame.draw.circle(display, RED, (x*TILE_WIDTH, y*TILE_WIDTH), 3)
-                pygame.draw.rect(display, YELLOW, (room_1.x*TILE_WIDTH, room_1.y*TILE_WIDTH,
-                                                    room_1.width*TILE_WIDTH, room_1.height*TILE_WIDTH),1)
+                rect_1 = room_1.create_rect()
+                x1, y1 = room_1.create_key_point()
+                pygame.draw.rect(display, YELLOW, rect_1,1)
             if room_2 and (divisions-1 == 0):
-                x, y = room_2.create_key_point()
-                pygame.draw.circle(display, YELLOW, (x*TILE_WIDTH, y*TILE_WIDTH), 3)
-                pygame.draw.rect(display, RED, (room_2.x*TILE_WIDTH, room_2.y*TILE_WIDTH,
-                                                    room_2.width*TILE_WIDTH, room_2.height*TILE_WIDTH),1)
+                rect_2 = room_2.create_rect()
+                x2, y2 = room_2.create_key_point()
+                pygame.draw.rect(display, RED, rect_2,1)
                 
-            create_partitions(child_1.x, child_1.y, child_1.width, child_1.height, divisions-1)
-            create_partitions(child_2.x, child_2.y, child_2.width, child_2.height, divisions-1)
-
-    return parent
-
+            draw_room(child_1.x, child_1.y, child_1.width, child_1.height, divisions-1)
+            draw_room(child_2.x, child_2.y, child_2.width, child_2.height, divisions-1)
 
 
 
@@ -235,23 +209,19 @@ clock = pygame.time.Clock()
 display = pygame.display.set_mode((ROW*2*TILE_WIDTH+3, COL*2*TILE_WIDTH+3))
 
 div = 1
-cells = create_partitions(0, 0, ROW*2, COL*2, div)
-
 while True:
-    # display.fill(BLACK)
+    display.fill(BLACK)
+    cells = draw_room(0, 0, ROW*2, COL*2, div)
+
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             pygame.quit()
             exit()
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_UP:
-                display.fill(BLACK)
                 div += 1
-                cells = create_partitions(0, 0, ROW*2, COL*2, div)
             if event.key == pygame.K_DOWN:
-                display.fill(BLACK)
                 div -=1
-                cells = create_partitions(0, 0, ROW*2, COL*2, div)
                 
             
 

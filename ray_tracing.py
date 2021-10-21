@@ -1,11 +1,9 @@
 
 import pygame
 import numpy as np
-import random
 import math
-import time
+import pygame.gfxdraw
 
-from pygame.cursors import tri_left
 
 
 WHITE = (255, 255, 255)
@@ -22,7 +20,7 @@ COL = 10
 
 LIGHT_RADIUS = 100
 LIGHT_ALPHA = 2.5
-SHADOW_ALPHA = 50
+SHADOW_ALPHA = 50 
 
 
 class Tile:
@@ -117,6 +115,7 @@ class Tile:
                  ('EDGE', (ROW, 0), (ROW, COL)),
                  ('EDGE', (ROW, COL), (0, COL)),
                  ('EDGE', (0, COL), (0, 0))]
+
         for x, row in enumerate(self.tile_list):
             for y, col in enumerate(row):
                 if col == 1:
@@ -131,12 +130,11 @@ class Tile:
 
         return vertexs
 
-    def offset_vertexs(self, x, y, walls, vertexs, offset=0.001, dummy_length=10000):
+    def offset_vertexs(self, x, y, walls, vertexs, offset=0.001, dummy_length=1000):
         ''' return offseted vertexs in grid system '''
         offsets = [v for v in vertexs]
+        
         for vx, vy in vertexs:
-            distance = (x/TILE_WIDTH-vx)**2 + (y/TILE_WIDTH-vy)**2
-
             rad = math.atan2(vx*TILE_WIDTH-x, vy*TILE_WIDTH-y)
             c_clockwise, clockwise = rad-offset, rad+offset
 
@@ -145,50 +143,23 @@ class Tile:
             dummy_2 = (x + dummy_length*math.sin(clockwise),
                        y + dummy_length*math.cos(clockwise))
 
-            for dx, dy in [dummy_1, dummy_2]:
-                for wall in walls:
-                    x1, y1, x2, y2 = wall[1][0], wall[1][1], wall[2][0], wall[2][1]
-                    x3, y3, x4, y4 = x/TILE_WIDTH, y/TILE_WIDTH, dx/TILE_WIDTH, dy/TILE_WIDTH
-
-                    s1_x, s1_y = x2-x1, y2-y1
-                    s2_x, s2_y = x4-x3, y4-y3
-
-                    if (-s2_x*s1_y + s1_x*s2_y):
-                        s = (-s1_y*(x1-x3) + s1_x*(y1-y3)) / (-s2_x*s1_y + s1_x*s2_y)
-                        t = ( s2_x*(y1-y3) - s2_y*(x1-x3)) / (-s2_x*s1_y + s1_x*s2_y)
-
-                        if 0 <= s <= 1 and 0 <= t <=1:
-                            i_x = x1 + (t * s1_x)
-                            i_y = y1 + (t * s1_y)
-                            if all([i_x >= 0, i_y >= 0]):
-                                d_offset = (x3-i_x)**2 + (y3-i_y)**2
-                                if d_offset > distance:
-                                    offsets.append((i_x, i_y))
-
+            offsets = offsets + [(x/TILE_WIDTH, y/TILE_WIDTH) for x,y in [dummy_1, dummy_2]]
         return offsets
-
-
-class Point(tuple):
-    def __hash__(self):
-        return hash(tuple(round(x, 1) for x in self))
-        
-    def __eq__(self, other):
-        if type(other) is not type(self): return False
-        return len(other) == len(self) and \
-            all(round(x, 1) == round(y, 1) for x, y in zip(self, other))
-
 
 class Ray:
     def __init__(self, x, y):
         self.x = x
         self.y = y
-
-
-    def fuzzy_uniq(points):
-        return list(map(tuple, set(map(Point, points))))
         
     def check_collision(self, walls, offsets) -> list:
-        ''' pass in offseted vertexs and return lists of nearest collision points in grid system'''
+        ''' pass in offseted vertexs -> return lists of nearest collision points in grid system'''
+
+        def voxel(p):
+            ''' round up coords to pass in fuz_filter'''
+            return tuple(round(x, 1) for x in p)
+    
+        def fuz_filter(points):
+            return list({voxel(p):p for p in points}.values())
 
         collide_points = []
         for vx, vy in offsets:
@@ -214,26 +185,37 @@ class Ray:
             if temp:
                 collide_points.append(temp[-1])
 
-        # remove similar/duplicate points to reduce the amount of ray
+        # remove similar/duplicate points to reduce the amount of ray : Credits to u/chimeraA_!
         collide_points = list(set(collide_points))
-        points = Point(collide_points)
-        fuz_sort_points = list(map(tuple, set(map(Point, points))))
+        fuz_points = fuz_filter(collide_points)
 
-        return sorted(fuz_sort_points, key=lambda x: math.atan2(x[1]-self.y/TILE_WIDTH, x[0]-self.x/TILE_WIDTH))
+        return sorted(fuz_points, key=lambda x: math.atan2(x[1]-self.y/TILE_WIDTH, x[0]-self.x/TILE_WIDTH))
 
-    def draw_lights(self, collide_points, fill=False):
-        ''' connect all valid points, '''
+    def draw_shadow(self, points):
+        ''' pass in valid points, return polygons of shadows -> [[(coord),(coord)], []..] '''
+        
+        indexes = []
+        for i, (x,y) in enumerate(points):
+            if x != 0 and y != 0:
+                indexes.append(i)
+                
+        print(indexes)
+
+    def draw_lights(self, collide_points, fill=True):
+        ''' connect all valid points '''
         grid_to_coord = [(np.array(c)*TILE_WIDTH).tolist() for c in collide_points]
-        grid_to_coord = grid_to_coord + [grid_to_coord[0]]
+
         if fill:
             if len(collide_points) > 8 :
                 tartget_rect = pygame.Rect(0, 0, ROW*TILE_WIDTH+1, COL*TILE_WIDTH+1)
                 surface = pygame.Surface(tartget_rect.size, pygame.SRCALPHA)
                 pygame.draw.polygon(surface, (*WHITE, SHADOW_ALPHA), grid_to_coord)
                 display.blit(surface, tartget_rect)
-        else:
+        else:           
             for coord in grid_to_coord:
                 pygame.draw.line(display, YELLOW, (self.x, self.y), coord)
+
+
 
 class Mouse:
     def __init__(self, x, y):
@@ -260,6 +242,10 @@ def draw_circle_alpha(surface, color, center, radius):
     shape_surf = pygame.Surface(target_rect.size, pygame.SRCALPHA)
     pygame.draw.circle(shape_surf, color, (radius, radius), radius)
     surface.blit(shape_surf, target_rect)
+
+
+
+
 
 
 pygame.init()
@@ -289,7 +275,7 @@ while True:
     ''' Mouse '''
     mx, my = pygame.mouse.get_pos()
     mouse = Mouse(mx, my)
-    neighbors = mouse.create_neighbors()
+    neighbors = mouse.create_neighbors(num=0)
     
     for n in neighbors:
         pygame.draw.circle(display, RED, n, 1)
@@ -308,6 +294,7 @@ while True:
         offsets = tile.offset_vertexs(nx, ny, walls, vertexs) 
         ray = Ray(nx, ny)
         points = ray.check_collision(walls, offsets)
+        ray.draw_shadow(points)
         ray.draw_lights(points, fill=True)
         
 
@@ -328,6 +315,6 @@ while True:
     # Time
     # if counter < 0:
     #     display.blit(text.render('YOU LOSE', True, RED), (100,100))
-    clock.tick(100)
+    clock.tick(144)
 
     pygame.display.update()
