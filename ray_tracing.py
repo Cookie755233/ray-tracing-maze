@@ -1,9 +1,9 @@
 
+from operator import index
 import pygame
 import numpy as np
 import math
-import pygame.gfxdraw
-
+from itertools import groupby
 
 
 WHITE = (255, 255, 255)
@@ -193,13 +193,32 @@ class Ray:
 
     def draw_shadow(self, points):
         ''' pass in valid points, return polygons of shadows -> [[(coord),(coord)], []..] '''
-        
-        indexes = []
-        for i, (x,y) in enumerate(points):
-            if x != 0 and y != 0:
-                indexes.append(i)
-                
-        print(indexes)
+        # for i, p in enumerate(points):
+        #     font = pygame.font.SysFont('Arial',10)
+        #     render =font.render(f'{i}', True, RED)
+        #     display.blit(render, (p[0]*TILE_WIDTH+5, p[1]*TILE_WIDTH+5))
+
+        def get_missing(points, given):
+            leng = len(points)
+            target = [i for i in range(leng)]
+            output = [list(g) for t, g in groupby(target, key=lambda x: x in given) if not t]
+            if output and output[0][0] == target[0] and output[-1][-1] == target[-1]:
+                output[-1] += output.pop(0)
+            print(output)
+            
+            for l in output:
+                if l[0]-1<0:         l = [l[-1]] + l + [l[0]+1]
+                elif l[-1]+1 > leng: l = [l[0]-1] + l + [0]
+                else:                l = [l[0]-1] + l + [l[-1]+1]
+            print(output)
+
+            return output
+
+
+        if len(points) > 8:
+            indexes = [i for i, (x,y) in enumerate(points) if x != 0 and y != 0]
+            missings = get_missing(points, indexes)
+
 
     def draw_lights(self, collide_points, fill=True):
         ''' connect all valid points '''
